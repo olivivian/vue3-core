@@ -672,7 +672,9 @@ export function setupComponent(
   isInSSRComponentSetup = false
   return setupResult
 }
-
+//$Fun 【setupStatefulComponent】：设置一个有状态的组件，setup函数的调用和执行
+//在调用组件的setup函数之前，它执行各种验证和设置操作。
+//如果setup函数返回一个Promise，它会处理这个Promise并等待结果。否则，它直接处理设置的结果。
 function setupStatefulComponent(
   instance: ComponentInternalInstance,
   isSSR: boolean
@@ -711,14 +713,16 @@ function setupStatefulComponent(
   if (__DEV__) {
     exposePropsOnRenderContext(instance)
   }
-  // 2. call setup()
+  // 2. call setup()  获取 setup 函数
   const { setup } = Component
-  if (setup) {
+  if (setup) {// 存在 setup 函数
+     // 根据 setup 函数的入参长度，判断是否需要创建 setupContext 对象
     const setupContext = (instance.setupContext =
       setup.length > 1 ? createSetupContext(instance) : null)
 
     setCurrentInstance(instance)
     pauseTracking()
+     //$IFun【setupStatefulComponent - callWithErrorHandling】 通过 callWithErrorHandling 函数来间接执行 setup 函数
     const setupResult = callWithErrorHandling(
       setup,
       instance,
@@ -766,12 +770,13 @@ function setupStatefulComponent(
   }
 }
 
+//$Fun 【handleSetupResult】：处理 setup 执行结果，setup 返回值不一样的话，会有不同的处理
 export function handleSetupResult(
   instance: ComponentInternalInstance,
   setupResult: unknown,
   isSSR: boolean
 ) {
-  if (isFunction(setupResult)) {
+  if (isFunction(setupResult)) {//如果 setupResult 是个函数，那么会把该函数绑定到 render 上。
     // setup returned an inline render function
     if (__SSR__ && (instance.type as ComponentOptions).__ssrInlineRender) {
       // when the function's name is `ssrRender` (compiled by SFC inline mode),
@@ -780,7 +785,7 @@ export function handleSetupResult(
     } else {
       instance.render = setupResult as InternalRenderFunction
     }
-  } else if (isObject(setupResult)) {
+  } else if (isObject(setupResult)) {//当 setupResult 是一个对象的时候，我们为 setupResult 对象通过 proxyRefs 作了一层代理，方便用户直接访问 ref 类型的值。
     if (__DEV__ && isVNode(setupResult)) {
       warn(
         `setup() should not return VNodes directly - ` +
@@ -830,11 +835,14 @@ export function registerRuntimeCompiler(_compile: any) {
 // dev only
 export const isRuntimeOnly = () => !compile
 
+//$Fun【finishComponentSetup】：转换旧版渲染函数、验证兼容性配置、规范化模板/渲染函数、根据需要编译模板、设置组件实例的渲染函数、应用选项，并在必要时生成警告。
+//接受参数，组件实例，布尔值用于指示代码是否在服务器端渲染（SSR）中运行，可选的布尔值skipOptions
 export function finishComponentSetup(
   instance: ComponentInternalInstance,
   isSSR: boolean,
   skipOptions?: boolean
 ) {
+  // type 是个组件对象
   const Component = instance.type as ComponentOptions
 
   if (__COMPAT__) {
@@ -848,6 +856,7 @@ export function finishComponentSetup(
   // template / render function normalization
   // could be already set when returned from setup()
   if (!instance.render) {
+    // 如果组件没有 render 函数，那么就需要把 template 编译成 render 函数
     // only do on-the-fly compile if not in SSR - SSR on-the-fly compilation
     // is done by server-renderer
     if (!isSSR && compile && !Component.render) {
@@ -900,6 +909,7 @@ export function finishComponentSetup(
   }
 
   // support for 2.x options
+  // __FEATURE_OPTIONS_API__ 变量用来标记是否是兼容 选项式 API 调用，如果我们只使用 Composition Api 那么就可以通过 webpack 静态变量注入的方式关闭此特性。
   if (__FEATURE_OPTIONS_API__ && !(__COMPAT__ && skipOptions)) {
     setCurrentInstance(instance)
     pauseTracking()
@@ -979,6 +989,8 @@ function getSlotsProxy(instance: ComponentInternalInstance): Slots {
   )
 }
 
+// $Fun【createSetupContext】：提供一个统一的上下文对象，用于访问和操作组件实例的属性和方法，返回一个包含attrs、slots、emit和expose属性的对象
+
 export function createSetupContext(
   instance: ComponentInternalInstance
 ): SetupContext {
@@ -1006,6 +1018,7 @@ export function createSetupContext(
     instance.exposed = exposed || {}
   }
 
+  // 在开发环境下，attrs、slots和emit属性是通过getter函数返回的，以确保在这些属性被访问时能够进行必要的代理和验证。
   if (__DEV__) {
     // We use getters in dev in case libs like test-utils overwrite instance
     // properties (overwrites should not be done in prod)
@@ -1021,7 +1034,7 @@ export function createSetupContext(
       },
       expose
     })
-  } else {
+  } else {//在非开发环境下，这些属性直接从组件实例中获取。
     return {
       get attrs() {
         return getAttrsProxy(instance)

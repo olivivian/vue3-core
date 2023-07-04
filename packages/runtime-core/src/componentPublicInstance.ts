@@ -296,12 +296,17 @@ export const isReservedPrefix = (key: string) => key === '_' || key === '$'
 const hasSetupBinding = (state: Data, key: string) =>
   state !== EMPTY_OBJ && !state.__isScriptSetup && hasOwn(state, key)
 
+// $Fun【PublicInstanceProxyHandlers】： 创建组件实例的Proxy对象的处理函数，需要让用户可以直接在 render 函数内直接使用 this 来触发 proxy
 export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
+ 
+  //$Fun-2【get】：用于从ComponentRenderContext对象中获取属性的getter函数
+  //instance表示从ComponentRenderContext对象中获取组件实例
   get({ _: instance }: ComponentRenderContext, key: string) {
     const { ctx, setupState, data, props, accessCache, type, appContext } =
       instance
 
     // for internal formatters to know that this is a Vue instance
+    //是否是特殊属性（__isVue）
     if (__DEV__ && key === '__isVue') {
       return true
     }
@@ -313,9 +318,12 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
     // access on a plain object, so we use an accessCache object (with null
     // prototype) to memoize what access type a key corresponds to.
     let normalizedProps
+    // $ 开头的一般是 Vue 组件实例上的内置属性
     if (key[0] !== '$') {
+      // 从缓存中获取当前 key 存在于哪个属性中
       const n = accessCache![key]
-      if (n !== undefined) {
+      // 检查键是否存在于accessCache对象中，该对象用于缓存键的访问类型
+      if (n !== undefined) {//如果键在accessCache中找到，则根据访问类型从setupState、data、props或ctx中返回相应的值。这里的定义顺序，决定了后续取值的优先级顺序：setupState >data >props > ctx
         switch (n) {
           case AccessTypes.SETUP:
             return setupState[key]
@@ -326,11 +334,13 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
           case AccessTypes.PROPS:
             return props![key]
           // default: just fallthrough
-        }
+        }//如果键在accessCache中找不到，则按照顺序检查键是否存在于setupState、data、props或ctx中，并在存在时返回相应的值
       } else if (hasSetupBinding(setupState, key)) {
+         // 从 setupState 中取
         accessCache![key] = AccessTypes.SETUP
         return setupState[key]
       } else if (data !== EMPTY_OBJ && hasOwn(data, key)) {
+        // 从 data 中取
         accessCache![key] = AccessTypes.DATA
         return data[key]
       } else if (
@@ -339,20 +349,27 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
         (normalizedProps = instance.propsOptions[0]) &&
         hasOwn(normalizedProps, key)
       ) {
+        // 从 props 中取
         accessCache![key] = AccessTypes.PROPS
         return props![key]
       } else if (ctx !== EMPTY_OBJ && hasOwn(ctx, key)) {
+        // 从 ctx 中取
         accessCache![key] = AccessTypes.CONTEXT
         return ctx[key]
       } else if (!__FEATURE_OPTIONS_API__ || shouldCacheAccess) {
+         // 都取不到
         accessCache![key] = AccessTypes.OTHER
       }
     }
 
+    //如果上面都没找到，则检查键是否存在于publicPropertiesMap中，并在存在时返回相应的值
+    // publicPropertiesMap对象，用于存储组件实例的所有公共属性。如：$data, $props,  $,slots
     const publicGetter = publicPropertiesMap[key]
     let cssModule, globalProperties
     // public $xxx properties
+    //在访问组件实例的属性时，Vue3会检查publicPropertiesMap对象中是否存在该属性，如果存在，则返回该属性的值，否则返回undefined
     if (publicGetter) {
+      // 以 $ 保留字开头的相关函数和方法
       if (key === '$attrs') {
         track(instance, TrackOpTypes.GET, key)
         __DEV__ && markAttrsAccessed()
@@ -364,17 +381,17 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
       // css module (injected by vue-loader)
       (cssModule = type.__cssModules) &&
       (cssModule = cssModule[key])
-    ) {
+    ) {//如果键在publicPropertiesMap中找不到，则检查键是否存在于由vue-loader注入的cssModule对象中，并在存在时返回相应的值。
       return cssModule
-    } else if (ctx !== EMPTY_OBJ && hasOwn(ctx, key)) {
+    } else if (ctx !== EMPTY_OBJ && hasOwn(ctx, key)) {//如果键在cssModule中找不到，则检查键是否存在于ctx中，并在存在时返回相应的值。
       // user may set custom properties to `this` that start with `$`
       accessCache![key] = AccessTypes.CONTEXT
       return ctx[key]
     } else if (
-      // global properties
+      // global properties 全局属性
       ((globalProperties = appContext.config.globalProperties),
       hasOwn(globalProperties, key))
-    ) {
+    ) {//如果键在ctx中找不到，则检查键是否存在于appContext.config.globalProperties中，并在存在时返回相应的值。
       if (__COMPAT__) {
         const desc = Object.getOwnPropertyDescriptor(globalProperties, key)!
         if (desc.get) {
@@ -395,7 +412,7 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
         // #1091 avoid internal isRef/isVNode checks on component instance leading
         // to infinite warning loop
         key.indexOf('__v') !== 0)
-    ) {
+    ) { // 最后，如果上述条件都不满足，则检查键是否是保留前缀，并显示警告消息。
       if (data !== EMPTY_OBJ && isReservedPrefix(key[0]) && hasOwn(data, key)) {
         warn(
           `Property ${JSON.stringify(
@@ -412,6 +429,8 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
     }
   },
 
+  //$Fun-2【set】：设置对象属性的代理函数
+  //优先级关系为：setupState > data > props
   set(
     { _: instance }: ComponentRenderContext,
     key: string,
@@ -419,6 +438,7 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
   ): boolean {
     const { data, setupState, ctx } = instance
     if (hasSetupBinding(setupState, key)) {
+      // 设置 setupState
       setupState[key] = value
       return true
     } else if (
@@ -429,13 +449,14 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
       warn(`Cannot mutate <script setup> binding "${key}" from Options API.`)
       return false
     } else if (data !== EMPTY_OBJ && hasOwn(data, key)) {
+       // 设置 data
       data[key] = value
       return true
-    } else if (hasOwn(instance.props, key)) {
+    } else if (hasOwn(instance.props, key)) { // 不能给 props 赋值 如果直接对 props 或者组件实例上的内置属性赋值，则会告警
       __DEV__ && warn(`Attempting to mutate prop "${key}". Props are readonly.`)
       return false
     }
-    if (key[0] === '$' && key.slice(1) in instance) {
+    if (key[0] === '$' && key.slice(1) in instance) { // 不能给组件实例上的内置属性赋值
       __DEV__ &&
         warn(
           `Attempting to mutate public property "${key}". ` +
@@ -449,13 +470,16 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
           configurable: true,
           value
         })
-      } else {
+      } else {// 用户自定义数据赋值
         ctx[key] = value
       }
     }
     return true
   },
 
+  //$Fun-2【has】检查给定的key是否存在于多个对象中
+  //依次判断 key 是否存在于 accessCache > data > setupState > prop > ctx > publicPropertiesMap > globalProperties
+  //如果在这些对象中存在该key.则函数返回true;否则，返回false.
   has(
     {
       _: { data, setupState, accessCache, ctx, appContext, propsOptions }

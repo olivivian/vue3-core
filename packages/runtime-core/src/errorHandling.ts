@@ -60,6 +60,9 @@ export const ErrorTypeStrings: Record<LifecycleHooks | ErrorCodes, string> = {
 
 export type ErrorTypes = LifecycleHooks | ErrorCodes
 
+//$Fun【callWithErrorHandling】：执行一个函数，并在出现错误时捕获和处理错误
+//通过将函数、实例、错误类型和参数传递给callWithErrorHandling函数，可以方便地实现错误处理逻辑，增加代码的健壮性和可靠性。
+//这样的好处一方面可以由 Vue 内部统一 try...catch 处理用户代码运行可能出现的错误。另一方面这些错误也可以交由用户统一注册的 errorHandler 进行处理，比如上报给监控系统。
 export function callWithErrorHandling(
   fn: Function,
   instance: ComponentInternalInstance | null,

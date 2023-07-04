@@ -13,5 +13,55 @@
   },
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+
+  //todo-tree settings
+
+"todo-tree.general.tags": [
+    "TODO",
+    "FIXME",
+    "$Fun",
+    "$IFun",
+    "$DD",
+    "$Exp"
+],
+"todo-tree.regex.regexCaseSensitive": false,
+"todo-tree.highlights.defaultHighlight": {
+    "foreground": "#ffffff",
+    "background": "#b2f2bb",
+    "icon": "checklist",
+    "rulerColour": "#b2f2bb",
+    "type": "tag",
+    "iconColour": "#b2f2bb"
+},
+"todo-tree.highlights.customHighlight": {
+    "$Fun": {
+        "background": "#d0bfff",
+        "icon": "beaker",
+        "rulerColour": "#d0bfff",
+        "iconColour": "#d0bfff",
+        "opacity": 50,
+    },
+    "$IFun": {
+        "background": "#a5d8ff",
+        "icon": "pin",
+        "rulerColour": "#a5d8ff",
+        "iconColour": "#a5d8ff",
+        "rulerLane": "full",
+        "opacity": 50,
+    },
+    "$DD": {
+        "background": "#a5d8ff",
+        "icon": "verified",
+        "rulerColour": "#a5d8ff",
+        "iconColour": "#a5d8ff",
+        "opacity": 50,
+    },
+    "$Exp": {
+        "background": "#ffec99",
+        "icon": "bug",
+        "rulerColour": "#ffec99",
+        "iconColour": "#ffec99",
+        "opacity": 50,
+    },
 }
