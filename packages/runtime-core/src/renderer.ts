@@ -354,9 +354,10 @@ function baseCreateRenderer(
 
   // Note: functions inside this closure should use `const xxx = () => {}`
   // style in order to prevent being inlined by minifiers.
+  //$Fun【patch】：根据虚拟DOM（VDOM）的变化来更新DOM （ <- patchKeyedChildren ）
   const patch: PatchFn = (
-    n1,
-    n2,
+    n1, // 旧的VDOM节点
+    n2, // 新的VDOM节点
     container,
     anchor = null,
     parentComponent = null,
@@ -365,10 +366,11 @@ function baseCreateRenderer(
     slotScopeIds = null,
     optimized = __DEV__ && isHmrUpdating ? false : !!n2.dynamicChildren
   ) => {
+    // 检查n1和n2是否相同。如果相同，则提前返回
     if (n1 === n2) {
       return
     }
-
+    // 判断当 n1 存在，即存在老节点，当新节点和老节点不是同类型的节点情况，那么执行销毁老节点，新增新节点。
     // patching & not same type, unmount old tree
     if (n1 && !isSameVNodeType(n1, n2)) {
       anchor = getNextHostNode(n1)
@@ -378,9 +380,10 @@ function baseCreateRenderer(
 
     if (n2.patchFlag === PatchFlags.BAIL) {
       optimized = false
-      n2.dynamicChildren = null
+      n2.dynamicChildren = null // 清除n2的dynamicChildren属性
     }
-
+  // 根据n2的类型，相应地处理VDOM节点
+  // 因为 n2 是新的 vnode
     const { type, ref, shapeFlag } = n2
     switch (type) {
       case Text:
@@ -396,7 +399,7 @@ function baseCreateRenderer(
           patchStaticNode(n1, n2, container, isSVG)
         }
         break
-      case Fragment:
+      case Fragment: 
         processFragment(
           n1,
           n2,
@@ -409,8 +412,8 @@ function baseCreateRenderer(
           optimized
         )
         break
-      default:
-        if (shapeFlag & ShapeFlags.ELEMENT) {
+      default:  // 这里就基于 shapeFlag 来处理
+        if (shapeFlag & ShapeFlags.ELEMENT) {  // 普通元素更新
           processElement(
             n1,
             n2,
@@ -422,7 +425,7 @@ function baseCreateRenderer(
             slotScopeIds,
             optimized
           )
-        } else if (shapeFlag & ShapeFlags.COMPONENT) {
+        } else if (shapeFlag & ShapeFlags.COMPONENT) { // 组件更新
           processComponent(
             n1,
             n2,
@@ -465,7 +468,7 @@ function baseCreateRenderer(
         }
     }
 
-    // set ref
+    // set ref 如果存在ref属性，它会设置ref并相应地更新引用。
     if (ref != null && parentComponent) {
       setRef(ref, n1 && n1.ref, parentSuspense, n2 || n1, !n2)
     }
@@ -573,6 +576,7 @@ function baseCreateRenderer(
     hostRemove(anchor!)
   }
 
+  // $Fun-2 【processElement】 根据特定条件来挂载新元素或更新现有元素（<- setupRenderEffect）。
   const processElement = (
     n1: VNode | null,
     n2: VNode,
@@ -789,23 +793,25 @@ function baseCreateRenderer(
     }
   }
 
+  // $Fun-3 【patchElement <- processElement  <- setupRenderEffect】 修补 DOM 中的元素。
+  // 普通元素的更新主要做的就是先更新 props ，当 props 更新完成后，然后再统一更新子节点。
   const patchElement = (
-    n1: VNode,
-    n2: VNode,
-    parentComponent: ComponentInternalInstance | null,
-    parentSuspense: SuspenseBoundary | null,
-    isSVG: boolean,
-    slotScopeIds: string[] | null,
-    optimized: boolean
+    n1: VNode, // 旧 VNode。
+    n2: VNode, // 新 VNode。
+    parentComponent: ComponentInternalInstance | null, // 父组件实例。
+    parentSuspense: SuspenseBoundary | null, // 父 suspense 边界。
+    isSVG: boolean, // 元素是否为 SVG。
+    slotScopeIds: string[] | null, //  slot 作用域 ID。
+    optimized: boolean // 是否经过优化。
   ) => {
     const el = (n2.el = n1.el!)
-    let { patchFlag, dynamicChildren, dirs } = n2
+    let { patchFlag, dynamicChildren, dirs } = n2 // 新节点的 patchFlag , 动态子节点 dynamicChildren 
     // #1426 take the old vnode's patch flag into account since user may clone a
     // compiler-generated vnode, which de-opts to FULL_PROPS
     patchFlag |= n1.patchFlag & PatchFlags.FULL_PROPS
-    const oldProps = n1.props || EMPTY_OBJ
-    const newProps = n2.props || EMPTY_OBJ
-    let vnodeHook: VNodeHook | undefined | null
+    const oldProps = n1.props || EMPTY_OBJ // 旧节点的 props
+    const newProps = n2.props || EMPTY_OBJ // 新节点的 props
+    let vnodeHook: VNodeHook | undefined | null // 新节点的钩子
 
     // disable recurse in beforeUpdate hooks
     parentComponent && toggleRecurse(parentComponent, false)
@@ -825,8 +831,8 @@ function baseCreateRenderer(
     }
 
     const areChildrenSVG = isSVG && n2.type !== 'foreignObject'
-    if (dynamicChildren) {
-      patchBlockChildren(
+    if (dynamicChildren) { // 检查新虚拟DOM节点中是否有动态子节点
+      patchBlockChildren( // 更新这些子节点（如果存在）
         n1.dynamicChildren!,
         dynamicChildren,
         el,
@@ -839,9 +845,9 @@ function baseCreateRenderer(
         // necessary for HMR
         traverseStaticChildren(n1, n2)
       }
-    } else if (!optimized) {
+    } else if (!optimized) { // 如果没有动态子节点或者更新没有被优化
       // full diff
-      patchChildren(
+      patchChildren( // 全量比对子节点更新
         n1,
         n2,
         el,
@@ -861,7 +867,7 @@ function baseCreateRenderer(
       // (i.e. at the exact same position in the source template)
       if (patchFlag & PatchFlags.FULL_PROPS) {
         // element props contain dynamic keys, full diff needed
-        patchProps(
+        patchProps( // 对比 props 并更新
           el,
           n2,
           oldProps,
@@ -1144,20 +1150,22 @@ function baseCreateRenderer(
     }
   }
 
+  // $Fun-2 【setupRenderEffect - processComponent】处理组件。
   const processComponent = (
-    n1: VNode | null,
-    n2: VNode,
-    container: RendererElement,
-    anchor: RendererNode | null,
-    parentComponent: ComponentInternalInstance | null,
-    parentSuspense: SuspenseBoundary | null,
-    isSVG: boolean,
-    slotScopeIds: string[] | null,
-    optimized: boolean
+    n1: VNode | null, // 旧的虚拟节点
+    n2: VNode, // 新的虚拟节点。
+    container: RendererElement, // DOM 容器元素。
+    anchor: RendererNode | null, // 插入位置的 DOM 节点。
+    parentComponent: ComponentInternalInstance | null, // 父组件实例。
+    parentSuspense: SuspenseBoundary | null, // 父 suspense 边界。
+    isSVG: boolean, // 组件是否在 SVG 内部渲染。
+    slotScopeIds: string[] | null, // 组件插槽的作用域 ID。
+    optimized: boolean //  组件渲染是否经过优化。
   ) => {
     n2.slotScopeIds = slotScopeIds
+    // 如果n1为空（null），表示组件是第一次被挂载。
     if (n1 == null) {
-      if (n2.shapeFlag & ShapeFlags.COMPONENT_KEPT_ALIVE) {
+      if (n2.shapeFlag & ShapeFlags.COMPONENT_KEPT_ALIVE) { //如果n2虚拟节点的shapeFlag中包含COMPONENT_KEPT_ALIVE标志，那么将调用KeepAliveContext的activate方法，传递必要的参数。
         ;(parentComponent!.ctx as KeepAliveContext).activate(
           n2,
           container,
@@ -1165,7 +1173,7 @@ function baseCreateRenderer(
           isSVG,
           optimized
         )
-      } else {
+      } else { // 调用mountComponent函数来挂载组件。
         mountComponent(
           n2,
           container,
@@ -1176,19 +1184,20 @@ function baseCreateRenderer(
           optimized
         )
       }
-    } else {
-      updateComponent(n1, n2, optimized)
+    } else { // 如果n1不为空，表示组件正在更新。
+      updateComponent(n1, n2, optimized) //调用updateComponent函数根据旧的和新的虚拟节点来更新组件。
     }
   }
 
+  // $Fun-3 【mountComponent <- processComponent / processFragment <- setupRenderEffect】将组件挂载到 DOM 上。
   const mountComponent: MountComponentFn = (
-    initialVNode,
-    container,
-    anchor,
-    parentComponent,
-    parentSuspense,
-    isSVG,
-    optimized
+    initialVNode, // 组件的初始虚拟节点
+    container, // 要挂载组件的 DOM 元素
+    anchor, // 插入组件之前的锚节点
+    parentComponent, // 父组件实例
+    parentSuspense, // 父悬停边界实例
+    isSVG, // 标志，指示是否应在 SVG 命名空间中挂载组件
+    optimized // 标志，指示是否应优化渲染
   ) => {
     // 2.x compat may pre-create the component instance before actually
     // mounting
@@ -1257,8 +1266,10 @@ function baseCreateRenderer(
     }
   }
 
+  // $Fun-3 【updateComponent】更新组件。（  <- processComponent <- setupRenderEffect）
   const updateComponent = (n1: VNode, n2: VNode, optimized: boolean) => {
     const instance = (n2.component = n1.component)!
+     // 根据新老节点判断是否需要更新子组件
     if (shouldUpdateComponent(n1, n2, optimized)) {
       if (
         __FEATURE_SUSPENSE__ &&
@@ -1276,32 +1287,36 @@ function baseCreateRenderer(
         }
         return
       } else {
-        // normal update
+        // 如果需要更新，则将新节点vnode赋值给next normal update
+        // next 就是用来标记接下来需要渲染的子组件，如果 next 存在，则会进行子组件实例相关内容属性的更新操作，再进行子组件的更新流程。
         instance.next = n2
         // in case the child component is also queued, remove it to avoid
         // double updating the same child component in the same flush.
         invalidateJob(instance.update)
-        // instance.update is the reactive effect.
+        // 执行前面定义在 instance 上的 update 函数。 instance.update is the reactive effect.
         instance.update()
       }
     } else {
-      // no update needed. just copy over properties
+      //  如果不需要更新，则将就节点的内容更新到新节点上即可 no update needed. just copy over properties
       n2.el = n1.el
       instance.vnode = n2
     }
   }
 
+  //$Fun【setupRenderEffect】：用于为组件设置渲染效果
   const setupRenderEffect: SetupRenderEffectFn = (
-    instance,
-    initialVNode,
-    container,
-    anchor,
-    parentSuspense,
-    isSVG,
-    optimized
+    instance, //组件实例
+    initialVNode,  //初始虚拟DOM节点
+    container,  //DOM容器
+    anchor,  //DOM锚点
+    parentSuspense,  //父级Suspense
+    isSVG,  //是否为SVG
+    optimized //是否优化
   ) => {
     const componentUpdateFn = () => {
+      //如果组件尚未挂载，将执行组件的挂载过程。包括调用钩子函数、渲染组件和修补DOM
       if (!instance.isMounted) {
+        // 初始化组件
         let vnodeHook: VNodeHook | null | undefined
         const { el, props } = initialVNode
         const { bm, m, parent } = instance
@@ -1441,8 +1456,8 @@ function baseCreateRenderer(
 
         // #2458: deference mount-only object parameters to prevent memleaks
         initialVNode = container = anchor = null as any
-      } else {
-        // updateComponent
+      } else {//如果组件已经挂载，执行更新过程。这包括更新组件的状态、渲染组件和修补DOM。
+        // updateComponent  更新组件
         // This is triggered by mutation of component's own state (next: null)
         // OR parent calling processComponent (next: VNode)
         let { next, bu, u, parent, vnode } = instance
@@ -1454,8 +1469,11 @@ function baseCreateRenderer(
 
         // Disallow component effect recursion during pre-lifecycle hooks.
         toggleRecurse(instance, false)
+        // 通过 next 来判断当前是否需要更新 vnode 的节点信息，然后渲染出新的子树 nextTree，再进行比对新旧子树并找出需要更新的点，进行 DOM 更新。
+        // 如果有 next 的话说明需要更新组件的数组（props, slot 等）
         if (next) {
           next.el = vnode.el
+           // 更新组件实例信息
           updateComponentPreRender(instance, next, optimized)
         } else {
           next = vnode
@@ -1481,22 +1499,26 @@ function baseCreateRenderer(
         if (__DEV__) {
           startMeasure(instance, `render`)
         }
+        // 获取新的子树 vnode
         const nextTree = renderComponentRoot(instance)
         if (__DEV__) {
           endMeasure(instance, `render`)
         }
+         // 获取旧的子树 vnode
         const prevTree = instance.subTree
+        // 更新子树 vnode
         instance.subTree = nextTree
 
         if (__DEV__) {
           startMeasure(instance, `patch`)
         }
+         // patch 新老子树的 vnode
         patch(
           prevTree,
           nextTree,
-          // parent may have changed if it's in a teleport
+          // 处理 teleport 相关 parent may have changed if it's in a teleport
           hostParentNode(prevTree.el!)!,
-          // anchor may have changed if it's in a fragment
+          // 处理 fragment 相关 anchor may have changed if it's in a fragment
           getNextHostNode(prevTree),
           instance,
           parentSuspense,
@@ -1505,6 +1527,7 @@ function baseCreateRenderer(
         if (__DEV__) {
           endMeasure(instance, `patch`)
         }
+        // 缓存更新后的 DOM 节点
         next.el = nextTree.el
         if (originNext === null) {
           // self-triggered update. In case of HOC, update parent component
@@ -1543,11 +1566,13 @@ function baseCreateRenderer(
       }
     }
 
+    //创建一个响应式效果(ReactiveEffect)对象，并将其与一个组件实例(instance)关联起来
+    //这个响应式效果对象可以用于追踪、触发和处理组件的响应式更新
     // create reactive effect for rendering
-    const effect = (instance.effect = new ReactiveEffect(
-      componentUpdateFn,
-      () => queueJob(update),
-      instance.scope // track it in component's effect scope
+    const effect = (instance.effect = new ReactiveEffect( //通过将ReactiveEffect对象赋值给effect变量和instance.effect属性，可以在需要时方便地访问和操作这个效果对象。
+      componentUpdateFn,// 当触发效果时调用的函数
+      () => queueJob(update), //将update函数添加到作业队列的函数
+      instance.scope // 在组件的效果范围内跟踪的值 track it in component's effect scope
     ))
 
     const update: SchedulerJob = (instance.update = () => effect.run())
@@ -1569,16 +1594,22 @@ function baseCreateRenderer(
     update()
   }
 
+  // $Fun-4 【updateComponentPreRender】 完成了对实例上的属性、vnode 信息、slots 进行更新 （ <- updateComponent  <- processComponent <- setupRenderEffect）
   const updateComponentPreRender = (
     instance: ComponentInternalInstance,
     nextVNode: VNode,
     optimized: boolean
   ) => {
+    // 新节点 vnode.component 赋值为 instance
     nextVNode.component = instance
+     // 获取老节点的 props
     const prevProps = instance.vnode.props
+    // 为 instance.vnode 赋值为新的组件 vnode 
     instance.vnode = nextVNode
     instance.next = null
+    // 更新 props
     updateProps(instance, nextVNode.props, prevProps, optimized)
+     // 更新 slots
     updateSlots(instance, nextVNode.children, optimized)
 
     pauseTracking()
@@ -1587,7 +1618,7 @@ function baseCreateRenderer(
     flushPreFlushCbs()
     resetTracking()
   }
-
+  // $Fun-4 【patchChildren】 用于更新虚拟DOM节点的子节点 (  <- patchElement/processFragment/ <- processElement  <- setupRenderEffect)
   const patchChildren: PatchChildrenFn = (
     n1,
     n2,
@@ -1599,9 +1630,9 @@ function baseCreateRenderer(
     slotScopeIds,
     optimized = false
   ) => {
-    const c1 = n1 && n1.children
-    const prevShapeFlag = n1 ? n1.shapeFlag : 0
-    const c2 = n2.children
+    const c1 = n1 && n1.children // c1 代表旧节点的子节点元素
+    const prevShapeFlag = n1 ? n1.shapeFlag : 0 
+    const c2 = n2.children   // c2 代表新节点的子节点元素
 
     const { patchFlag, shapeFlag } = n2
     // fast path
@@ -1638,19 +1669,23 @@ function baseCreateRenderer(
       }
     }
 
-    // children has 3 possibilities: text, array or no children.
+    
+    //子节点有三种可能 文本节点、数组节点、空节点。  children has 3 possibilities: text, array or no children.
+    //如果新节点是文本
     if (shapeFlag & ShapeFlags.TEXT_CHILDREN) {
-      // text children fast path
+      // 旧节点是数组 text children fast path
       if (prevShapeFlag & ShapeFlags.ARRAY_CHILDREN) {
+        // 卸载旧节点
         unmountChildren(c1 as VNode[], parentComponent, parentSuspense)
       }
-      if (c2 !== c1) {
+      if (c2 !== c1) { // 新旧节点都是文本，但内容不一样，则替换
         hostSetElementText(container, c2 as string)
       }
-    } else {
+    } else { // 如果新节点是数组
       if (prevShapeFlag & ShapeFlags.ARRAY_CHILDREN) {
         // prev children was array
         if (shapeFlag & ShapeFlags.ARRAY_CHILDREN) {
+           // 进行新旧节点的 diff
           // two arrays, cannot assume anything, do full diff
           patchKeyedChildren(
             c1 as VNode[],
@@ -1664,17 +1699,20 @@ function baseCreateRenderer(
             optimized
           )
         } else {
+           // 卸载旧节点
           // no new children, just unmount old
           unmountChildren(c1 as VNode[], parentComponent, parentSuspense, true)
         }
       } else {
-        // prev children was text OR null
+        // prev children was text OR null 
         // new children is array OR null
         if (prevShapeFlag & ShapeFlags.TEXT_CHILDREN) {
+         // 把它清空 
           hostSetElementText(container, '')
         }
-        // mount new if array
+        // mount new if array 新节点是数组
         if (shapeFlag & ShapeFlags.ARRAY_CHILDREN) {
+          // 挂载新节点
           mountChildren(
             c2 as VNodeArrayChildren,
             container,
@@ -1750,6 +1788,7 @@ function baseCreateRenderer(
   }
 
   // can be all-keyed or mixed
+  // $Fun-5【patchKeyedChildren】 diff算法的核心，用于比较两个具有key属性的子节点数组，并根据不同的情况进行相应的更新、移动、删除或插入操作 ( <- patchChildren <- patchElement/processFragment/ <- processElement  <- setupRenderEffect) 
   const patchKeyedChildren = (
     c1: VNode[],
     c2: VNodeArrayChildren,
@@ -1761,12 +1800,13 @@ function baseCreateRenderer(
     slotScopeIds: string[] | null,
     optimized: boolean
   ) => {
-    let i = 0
+    let i = 0 // i 代表的是头部的标记位
     const l2 = c2.length
-    let e1 = c1.length - 1 // prev ending index
-    let e2 = l2 - 1 // next ending index
+    let e1 = c1.length - 1 // 旧节点的尾部标记位 prev ending index
+    let e2 = l2 - 1 // 新节点的尾部标记位 next ending index
 
-    // 1. sync from start
+    // 1. 从头部开始比对 sync from start
+    // 通过不断移动 i 这个头部标记位来判断对应的节点是否是 sameVnode，如果是，进行递归 patch 操作，否，进入从尾对比流程
     // (a b) c
     // (a b) d e
     while (i <= e1 && i <= e2) {
@@ -1774,7 +1814,7 @@ function baseCreateRenderer(
       const n2 = (c2[i] = optimized
         ? cloneIfMounted(c2[i] as VNode)
         : normalizeVNode(c2[i]))
-      if (isSameVNodeType(n1, n2)) {
+      if (isSameVNodeType(n1, n2)) {  // 如果是 sameVnode 则递归执行 patch  
         patch(
           n1,
           n2,
@@ -1792,7 +1832,8 @@ function baseCreateRenderer(
       i++
     }
 
-    // 2. sync from end
+    // 2. 从尾比对 sync from end
+    // 通过不断移动新旧节点 e1 和 e2 的尾部指针来判断对应的节点是否是 sameVnode。
     // a (b c)
     // d e (b c)
     while (i <= e1 && i <= e2) {
@@ -1800,7 +1841,7 @@ function baseCreateRenderer(
       const n2 = (c2[e2] = optimized
         ? cloneIfMounted(c2[e2] as VNode)
         : normalizeVNode(c2[e2]))
-      if (isSameVNodeType(n1, n2)) {
+      if (isSameVNodeType(n1, n2)) {  // 如果是 sameVnode 则递归执行 patch  
         patch(
           n1,
           n2,
@@ -1819,7 +1860,7 @@ function baseCreateRenderer(
       e2--
     }
 
-    // 3. common sequence + mount
+    // 3.如果有多余的新节点，则执行新增逻辑  common sequence + mount
     // (a b)
     // (a b) c
     // i = 2, e1 = 1, e2 = 2
@@ -1830,7 +1871,7 @@ function baseCreateRenderer(
       if (i <= e2) {
         const nextPos = e2 + 1
         const anchor = nextPos < l2 ? (c2[nextPos] as VNode).el : parentAnchor
-        while (i <= e2) {
+        while (i <= e2) { // 新增新节点
           patch(
             null,
             (c2[i] = optimized
@@ -1849,7 +1890,7 @@ function baseCreateRenderer(
       }
     }
 
-    // 4. common sequence + unmount
+    // 4. 如果有多余的旧节点，则执行卸载逻辑 common sequence + unmount
     // (a b) c
     // (a b)
     // i = 2, e1 = 2, e2 = 1
@@ -1857,21 +1898,21 @@ function baseCreateRenderer(
     // (b c)
     // i = 0, e1 = 0, e2 = -1
     else if (i > e2) {
-      while (i <= e1) {
+      while (i <= e1) { // 卸载节点
         unmount(c1[i], parentComponent, parentSuspense, true)
         i++
       }
     }
 
-    // 5. unknown sequence
+    // 5. 未知的子序列 unknown sequence
     // [i ... e1 + 1]: a b [c d e] f g
     // [i ... e2 + 1]: a b [e d c h] f g
     // i = 2, e1 = 4, e2 = 5
     else {
-      const s1 = i // prev starting index
-      const s2 = i // next starting index
+      const s1 = i // 旧子序列开始位置 prev starting index
+      const s2 = i // 新子序列开始位置 next starting index
 
-      // 5.1 build key:index map for newChildren
+      // 5.1 构建 key:index 关系索引 map build key:index map for newChildren
       const keyToNewIndexMap: Map<string | number | symbol, number> = new Map()
       for (i = s2; i <= e2; i++) {
         const nextChild = (c2[i] = optimized
@@ -1889,24 +1930,26 @@ function baseCreateRenderer(
         }
       }
 
-      // 5.2 loop through old children left to be patched and try to patch
+      // 5.2 遍历旧的节点，寻找旧节点在新节点中对应的位置信息，如果找到则做更新，找不到则移除 loop through old children left to be patched and try to patch
       // matching nodes & remove nodes that are no longer present
       let j
-      let patched = 0
-      const toBePatched = e2 - s2 + 1
-      let moved = false
-      // used to track whether any node has moved
+      let patched = 0 // 记录新节点已更新的数目
+      const toBePatched = e2 - s2 + 1 // 记录新节点还有多少个没有更新
+      let moved = false // 标记是否有必要进行节点的位置移动
+      // 标记是否有节点进行了位置移动 used to track whether any node has moved
       let maxNewIndexSoFar = 0
       // works as Map<newIndex, oldIndex>
       // Note that oldIndex is offset by +1
       // and oldIndex = 0 is a special value indicating the new node has
       // no corresponding old node.
       // used for determining longest stable subsequence
+      // 记录新节点在旧节点中的位置数组
       const newIndexToOldIndexMap = new Array(toBePatched)
+      // newIndexToOldIndexMap 全部置为 0
       for (i = 0; i < toBePatched; i++) newIndexToOldIndexMap[i] = 0
-
+      // 开始遍历旧子节点
       for (i = s1; i <= e1; i++) {
-        const prevChild = c1[i]
+        const prevChild = c1[i] // prevChild 代表旧节点
         if (patched >= toBePatched) {
           // all new children have been patched so this can only be a removal
           unmount(prevChild, parentComponent, parentSuspense, true)
@@ -1914,7 +1957,7 @@ function baseCreateRenderer(
         }
         let newIndex
         if (prevChild.key != null) {
-          newIndex = keyToNewIndexMap.get(prevChild.key)
+          newIndex = keyToNewIndexMap.get(prevChild.key) // 记录旧节点在新节点中的位置数组
         } else {
           // key-less node, try to locate a key-less node of the same type
           for (j = s2; j <= e2; j++) {
@@ -1927,16 +1970,19 @@ function baseCreateRenderer(
             }
           }
         }
-        if (newIndex === undefined) {
+        if (newIndex === undefined) { // 如果旧节点不存在于新节点中，则删除该节点
           unmount(prevChild, parentComponent, parentSuspense, true)
         } else {
+          // newIndexToOldIndexMap 中元素为 0 表示着新节点不存在于旧节点中
           newIndexToOldIndexMap[newIndex - s2] = i + 1
+          // 默认不移动的话，所有相同节点都是增序排列的
+          // 如果有移动，必然出现节点降序的情况 
           if (newIndex >= maxNewIndexSoFar) {
             maxNewIndexSoFar = newIndex
           } else {
             moved = true
           }
-          patch(
+          patch( // 更新节点
             prevChild,
             c2[newIndex] as VNode,
             container,
@@ -1947,23 +1993,24 @@ function baseCreateRenderer(
             slotScopeIds,
             optimized
           )
-          patched++
+          patched++ // 记录更新的数量
         }
       }
 
-      // 5.3 move and mount
-      // generate longest stable subsequence only when nodes have moved
+      // 5.3 移动和新增节点 move and mount
+      // 根据 newIndexToOldIndexMap 求取最长公共子序列 generate longest stable subsequence only when nodes have moved
       const increasingNewIndexSequence = moved
         ? getSequence(newIndexToOldIndexMap)
         : EMPTY_ARR
+      // 最长公共子序列尾部索引  
       j = increasingNewIndexSequence.length - 1
-      // looping backwards so that we can use last patched node as anchor
+      // 从尾部开始遍历 looping backwards so that we can use last patched node as anchor
       for (i = toBePatched - 1; i >= 0; i--) {
         const nextIndex = s2 + i
         const nextChild = c2[nextIndex] as VNode
         const anchor =
           nextIndex + 1 < l2 ? (c2[nextIndex + 1] as VNode).el : parentAnchor
-        if (newIndexToOldIndexMap[i] === 0) {
+        if (newIndexToOldIndexMap[i] === 0) {  // 如果新子序列中的节点在旧子序列中不存在，则新增节点  
           // mount new
           patch(
             null,
@@ -1976,10 +2023,10 @@ function baseCreateRenderer(
             slotScopeIds,
             optimized
           )
-        } else if (moved) {
+        } else if (moved) {  // 如果需要移动
           // move if:
-          // There is no stable subsequence (e.g. a reverse)
-          // OR current node is not among the stable sequence
+          // 没有最长递增子序列 There is no stable subsequence (e.g. a reverse)
+          // 当前的节点不在最长递增子序列中 OR current node is not among the stable sequence
           if (j < 0 || i !== increasingNewIndexSequence[j]) {
             move(nextChild, container, anchor, MoveType.REORDER)
           } else {
@@ -1990,10 +2037,11 @@ function baseCreateRenderer(
     }
   }
 
+  // $Fun-2 【move】在DOM树中移动虚拟节点。 (  <- patchKeyedChildren )
   const move: MoveFn = (
     vnode,
     container,
-    anchor,
+    anchor, // 参照物，记录着上一次更新的节点信息
     moveType,
     parentSuspense = null
   ) => {
@@ -2057,6 +2105,7 @@ function baseCreateRenderer(
     }
   }
 
+  // $Fun-2 unmount 从其父组件或 suspense 中卸载 vnode （ <-  patch）（<- patchKeyedChildren）
   const unmount: UnmountFn = (
     vnode,
     parentComponent,
@@ -2406,6 +2455,8 @@ export function traverseStaticChildren(n1: VNode, n2: VNode, shallow = false) {
 }
 
 // https://en.wikipedia.org/wiki/Longest_increasing_subsequence
+// $Fun-2 【getSequence  <- patchKeyedChildren】 实现最长递增子序列算法
+// 它以一个数字数组作为输入，并返回该数组的最长递增子序列。该算法利用动态规划来高效地找到子序列。
 function getSequence(arr: number[]): number[] {
   const p = arr.slice()
   const result = [0]
@@ -2413,17 +2464,17 @@ function getSequence(arr: number[]): number[] {
   const len = arr.length
   for (i = 0; i < len; i++) {
     const arrI = arr[i]
-    if (arrI !== 0) {
+    if (arrI !== 0) {  // 排除等于 0 的情况
       j = result[result.length - 1]
-      if (arr[j] < arrI) {
-        p[i] = j
+      if (arr[j] < arrI) { // 与最后一项进行比较
+        p[i] = j  // 存储在 result 更新前的最后一个索引的值
         result.push(i)
         continue
       }
       u = 0
       v = result.length - 1
-      while (u < v) {
-        c = (u + v) >> 1
+      while (u < v) { // 二分搜索，查找比 arrI 小的节点，更新 result 的值
+        c = (u + v) >> 1  // 取整得到当前位置
         if (arr[result[c]] < arrI) {
           u = c + 1
         } else {
@@ -2431,16 +2482,16 @@ function getSequence(arr: number[]): number[] {
         }
       }
       if (arrI < arr[result[u]]) {
-        if (u > 0) {
+        if (u > 0) { // 正确的结果
           p[i] = result[u - 1]
         }
-        result[u] = i
+        result[u] = i // 有可能替换会导致结果不正确，需要一个新数组 p 记录正确的结果
       }
     }
   }
   u = result.length
   v = result[u - 1]
-  while (u-- > 0) {
+  while (u-- > 0) {  // 回溯数组 p，找到最终的索引
     result[u] = v
     v = p[v]
   }

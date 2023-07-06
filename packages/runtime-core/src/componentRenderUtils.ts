@@ -320,6 +320,7 @@ const isElementRoot = (vnode: VNode) => {
   )
 }
 
+  // $Fun-4 【shouldUpdateComponent <- updateComponent  <- processComponent <- setupRenderEffect】 检查是否需要更新组件
 export function shouldUpdateComponent(
   prevVNode: VNode,
   nextVNode: VNode,
