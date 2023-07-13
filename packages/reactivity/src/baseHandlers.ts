@@ -58,13 +58,17 @@ function createArrayInstrumentations() {
   // values
   ;(['includes', 'indexOf', 'lastIndexOf'] as const).forEach(key => {
     instrumentations[key] = function (this: unknown[], ...args: unknown[]) {
+      // toRaw 可以把响应式对象转成原始数据
       const arr = toRaw(this) as any
       for (let i = 0, l = this.length; i < l; i++) {
+        // 对数组的每一项进行依赖收集
         track(arr, TrackOpTypes.GET, i + '')
       }
+      // 先尝试用参数本身，可能是响应式数据
       // we run the method using the original args first (which may be reactive)
       const res = arr[key](...args)
       if (res === -1 || res === false) {
+        // 如果失败，再尝试把参数转成原始数据
         // if that didn't work, run it again using raw values.
         return arr[key](...args.map(toRaw))
       } else {
@@ -91,8 +95,10 @@ function hasOwnProperty(this: object, key: string) {
   return obj.hasOwnProperty(key)
 }
 
+// $Fun: createGetter
 function createGetter(isReadonly = false, shallow = false) {
   return function get(target: Target, key: string | symbol, receiver: object) {
+    // 对 ReactiveFlags 的处理部分
     if (key === ReactiveFlags.IS_REACTIVE) {
       return !isReadonly
     } else if (key === ReactiveFlags.IS_READONLY) {
@@ -117,34 +123,42 @@ function createGetter(isReadonly = false, shallow = false) {
     const targetIsArray = isArray(target)
 
     if (!isReadonly) {
+      // 数组的特殊方法处理
       if (targetIsArray && hasOwn(arrayInstrumentations, key)) {
         return Reflect.get(arrayInstrumentations, key, receiver)
       }
+      // 对象 hasOwnProperty 方法处理
       if (key === 'hasOwnProperty') {
         return hasOwnProperty
       }
     }
 
+    // 取值
     const res = Reflect.get(target, key, receiver)
 
+    // Symbol Key 不做依赖收集
     if (isSymbol(key) ? builtInSymbols.has(key) : isNonTrackableKeys(key)) {
       return res
     }
-
+    // 进行依赖收集
     if (!isReadonly) {
       track(target, TrackOpTypes.GET, key)
     }
 
+    // 如果是浅层响应，那么直接返回，不需要递归了
     if (shallow) {
       return res
     }
 
     if (isRef(res)) {
+      // 跳过数组、整数 key 的展开
       // ref unwrapping - skip unwrap for Array + integer key.
       return targetIsArray && isIntegerKey(key) ? res : res.value
     }
 
     if (isObject(res)) {
+      // 如果 isReadonly 是 true，那么直接返回 readonly(res)
+      // 如果 res 是个对象或者数组类型，则递归执行 reactive 函数把 res 变成响应式
       // Convert returned value into a proxy as well. we do the isObject check
       // here to avoid invalid value warning. Also need to lazy access readonly
       // and reactive here to avoid circular dependency.
@@ -158,6 +172,7 @@ function createGetter(isReadonly = false, shallow = false) {
 const set = /*#__PURE__*/ createSetter()
 const shallowSet = /*#__PURE__*/ createSetter(true)
 
+// $Fun: createSetter
 function createSetter(shallow = false) {
   return function set(
     target: object,
@@ -169,7 +184,9 @@ function createSetter(shallow = false) {
     if (isReadonly(oldValue) && isRef(oldValue) && !isRef(value)) {
       return false
     }
+    // 不是浅层响应式，这里默认是 false
     if (!shallow) {
+      // 不是浅层响应式对象，先把原始值和新值进行toRaw转换
       if (!isShallow(value) && !isReadonly(value)) {
         oldValue = toRaw(oldValue)
         value = toRaw(value)
@@ -179,6 +196,7 @@ function createSetter(shallow = false) {
         return true
       }
     } else {
+      // 在浅模式中，对象被设置为原始值，而不管是否是响应式
       // in shallow mode, objects are set as-is regardless of reactive or not
     }
 
@@ -186,10 +204,13 @@ function createSetter(shallow = false) {
       isArray(target) && isIntegerKey(key)
         ? Number(key) < target.length
         : hasOwn(target, key)
+    // 通过 Reflect.set 设置值    
     const result = Reflect.set(target, key, value, receiver)
+    // 如果目标的原型链也是一个 proxy，通过 Reflect.set 修改原型链上的属性会再次触发 setter，这种情况下就没必要触发两次 trigger 了
     // don't trigger if target is something up in the prototype chain of original
     if (target === toRaw(receiver)) {
-      if (!hadKey) {
+      // 通过 trigger 函数派发通知
+      if (!hadKey) { // 依据 key 是否存在于 target 上来确定通知类型是 add（新增） 还是 set （修改）
         trigger(target, TriggerOpTypes.ADD, key, value)
       } else if (hasChanged(value, oldValue)) {
         trigger(target, TriggerOpTypes.SET, key, value, oldValue)
@@ -223,8 +244,8 @@ function ownKeys(target: object): (string | symbol)[] {
 }
 
 export const mutableHandlers: ProxyHandler<object> = {
-  get,
-  set,
+  get, // 属性读取
+  set, // 属性设置
   deleteProperty,
   has,
   ownKeys

@@ -25,8 +25,9 @@ export const createDep = (effects?: ReactiveEffect[]): Dep => {
   return dep
 }
 
+//$Fun：wasTracked 已经被收集过，缩写是 w
 export const wasTracked = (dep: Dep): boolean => (dep.w & trackOpBit) > 0
-
+//$Fun：newTracked 新收集的依赖，缩写是 n
 export const newTracked = (dep: Dep): boolean => (dep.n & trackOpBit) > 0
 
 export const initDepMarkers = ({ deps }: ReactiveEffect) => {

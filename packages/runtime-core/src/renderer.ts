@@ -2457,18 +2457,21 @@ export function traverseStaticChildren(n1: VNode, n2: VNode, shallow = false) {
 // https://en.wikipedia.org/wiki/Longest_increasing_subsequence
 // $Fun-2 【getSequence  <- patchKeyedChildren】 实现最长递增子序列算法
 // 它以一个数字数组作为输入，并返回该数组的最长递增子序列。该算法利用动态规划来高效地找到子序列。
+// 它使用了“LIS算法”的动态规划算法，可以在O(N log N)的时间复杂度内找到最长递增子序列。这个算法非常高效，可以处理非常大的数组。
+// 前驱：在一个序列中，比某个元素小的所有元素中，值最大的那个元素。
+// 假如，有一个序列[1, 3, 2, 5, 4, 6]，那么对于元素5来说，它的前驱是3。因为在5之前，比它小的所有元素中，3是值最大的那个。
 function getSequence(arr: number[]): number[] {
   const p = arr.slice()
-  const result = [0]
+  const result = [0] //定义一个数组，用来存储最长递增子序列的索引
   let i, j, u, v, c
   const len = arr.length
-  for (i = 0; i < len; i++) {
+  for (i = 0; i < len; i++) { // 遍历输入序列arr，对于每一个元素，分两种情况进行讨论
     const arrI = arr[i]
     if (arrI !== 0) {  // 排除等于 0 的情况
       j = result[result.length - 1]
-      if (arr[j] < arrI) { // 与最后一项进行比较
-        p[i] = j  // 存储在 result 更新前的最后一个索引的值
-        result.push(i)
+      if (arr[j] < arrI) { // 如果这个元素arr[i]大于result数组中最后一个元素对应的值
+        p[i] = j  // 更新p数组中arr[i]的前驱为result数组中最后一个元素的索引。
+        result.push(i)  // 就把这个元素添加到result数组末尾
         continue
       }
       u = 0
@@ -2491,7 +2494,7 @@ function getSequence(arr: number[]): number[] {
   }
   u = result.length
   v = result[u - 1]
-  while (u-- > 0) {  // 回溯数组 p，找到最终的索引
+  while (u-- > 0) {  // 回溯数组 p，得到最长递增子序列的索引
     result[u] = v
     v = p[v]
   }

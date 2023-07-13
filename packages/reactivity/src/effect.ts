@@ -16,11 +16,14 @@ import { ComputedRefImpl } from './computed'
 // which maintains a Set of subscribers, but we simply store them as
 // raw Sets to reduce memory overhead.
 type KeyToDepMap = Map<any, Dep>
+// 存放所有 reactive 传入的 receiver 容器
 const targetMap = new WeakMap<any, KeyToDepMap>()
 
+// 用于记录位于响应上下文中的effect嵌套层次数
 // The number of effects currently being tracked recursively.
 let effectTrackDepth = 0
 
+// 二进制位，每一位用于标识当前effect嵌套层级的依赖收集的启用状态
 export let trackOpBit = 1
 
 /**
@@ -28,6 +31,7 @@ export let trackOpBit = 1
  * This value is chosen to enable modern JS engines to use a SMI on all platforms.
  * When recursion depth is greater, fall back to using a full cleanup.
  */
+// 表示最大标记的位数
 const maxMarkerBits = 30
 
 export type EffectScheduler = (...args: any[]) => any
@@ -44,15 +48,19 @@ export type DebuggerEventExtraInfo = {
   oldValue?: any
   oldTarget?: Map<any, any> | Set<any>
 }
-
+// 当前激活的 effect
 export let activeEffect: ReactiveEffect | undefined
 
 export const ITERATE_KEY = Symbol(__DEV__ ? 'iterate' : '')
 export const MAP_KEY_ITERATE_KEY = Symbol(__DEV__ ? 'Map key iterate' : '')
 
+// $Fun: ReactiveEffect <- effect
 export class ReactiveEffect<T = any> {
+  // 用于标识副作用函数是否位于响应式上下文中被执行
   active = true
+  // 副作用函数持有它所在的所有依赖集合的引用，用于从这些依赖集合删除自身
   deps: Dep[] = []
+  // 通过 parent 这个标记，来回切换 activeEffect 的指向，从而完成对嵌套 effect 的正确的依赖收集
   parent: ReactiveEffect | undefined = undefined
 
   /**
@@ -84,10 +92,13 @@ export class ReactiveEffect<T = any> {
   }
 
   run() {
+    // 若当前 ReactiveEffect 对象脱离响应式上下文
+    // 那么其对应的副作用函数被执行时不会再收集依赖
     if (!this.active) {
       return this.fn()
     }
     let parent: ReactiveEffect | undefined = activeEffect
+    // 缓存是否需要收集依赖
     let lastShouldTrack = shouldTrack
     while (parent) {
       if (parent === this) {
@@ -96,27 +107,39 @@ export class ReactiveEffect<T = any> {
       parent = parent.parent
     }
     try {
+      // 保存上一个 activeEffect 到当前的 parent 上
       this.parent = activeEffect
+      // activeEffect 指向当前的 effect
       activeEffect = this
+      // shouldTrack 置成 true
       shouldTrack = true
-
+      // 左移操作符 << 将第一个操作数向左移动指定位数
+      // 左边超出的位数将会被清除，右边将会补零。
+      // trackOpBit 是基于 1 左移 effectTrackDepth 位
       trackOpBit = 1 << ++effectTrackDepth
-
+      // 如果未超过最大嵌套层数，则执行 initDepMarkers
       if (effectTrackDepth <= maxMarkerBits) {
         initDepMarkers(this)
       } else {
         cleanupEffect(this)
       }
+      // 这里执行了 fn
       return this.fn()
     } finally {
       if (effectTrackDepth <= maxMarkerBits) {
+        // 用于对曾经跟踪过，但本次副作用函数执行时没有跟踪的依赖采取删除操作。
+        // 新跟踪的 和 本轮跟踪过的都会被保留
         finalizeDepMarkers(this)
       }
 
+      // << --effectTrackDepth 右移动 effectTrackDepth 位
       trackOpBit = 1 << --effectTrackDepth
 
+      // 返回上个 activeEffect
       activeEffect = this.parent
+      // 返回上个 shouldTrack
       shouldTrack = lastShouldTrack
+      // 情况本次的 parent 指向
       this.parent = undefined
 
       if (this.deferStop) {
@@ -177,22 +200,27 @@ export interface ReactiveEffectRunner<T = any> {
  * @param options - Allows to control the effect's behaviour.
  * @returns A runner that can be used to control the effect after creation.
  */
+// $Fun：effect
 export function effect<T = any>(
   fn: () => T,
   options?: ReactiveEffectOptions
 ): ReactiveEffectRunner {
+  // 如果 fn 已经是一个 effect 函数了，则指向原始函数
   if ((fn as ReactiveEffectRunner).effect) {
     fn = (fn as ReactiveEffectRunner).effect.fn
   }
-
+  // 构造 _effect 实例
   const _effect = new ReactiveEffect(fn)
+  // options 初始化
   if (options) {
     extend(_effect, options)
     if (options.scope) recordEffectScope(_effect, options.scope)
   }
+  // 如有 options 或者 不是懒加载，执行 _effect.run()
   if (!options || !options.lazy) {
     _effect.run()
   }
+  // 返回 _effect.run
   const runner = _effect.run.bind(_effect) as ReactiveEffectRunner
   runner.effect = _effect
   return runner
@@ -206,7 +234,7 @@ export function effect<T = any>(
 export function stop(runner: ReactiveEffectRunner) {
   runner.effect.stop()
 }
-
+// 是否应该收集依赖
 export let shouldTrack = true
 const trackStack: boolean[] = []
 
@@ -263,13 +291,16 @@ export function track(target: object, type: TrackOpTypes, key: unknown) {
   }
 }
 
+//$Fun：trackEffects
 export function trackEffects(
   dep: Dep,
   debuggerEventExtraInfo?: DebuggerEventExtraInfo
 ) {
   let shouldTrack = false
   if (effectTrackDepth <= maxMarkerBits) {
+    // 如果本轮副作用函数执行过程中已经访问并收集过，则不用再收集该依赖
     if (!newTracked(dep)) {
+      // 设置 dep.n
       dep.n |= trackOpBit // set newly tracked
       shouldTrack = !wasTracked(dep)
     }
@@ -280,6 +311,7 @@ export function trackEffects(
 
   if (shouldTrack) {
     dep.add(activeEffect!)
+    // 将当前的依赖项dep添加到当前正在运行的effect的依赖项列表中。这样，当依赖项发生变化时，就可以通知effect进行更新了。
     activeEffect!.deps.push(dep)
     if (__DEV__ && activeEffect!.onTrack) {
       activeEffect!.onTrack(
@@ -302,6 +334,7 @@ export function trackEffects(
  * @param type - Defines the type of the operation that needs to trigger effects.
  * @param key - Can be used to target a specific reactive property in the target object.
  */
+// $Fun: trigger <- createSetter 通过 target 找到 targetMap 中的 dep，再根据 key 来找到所有的副作用函数 effect 遍历执行
 export function trigger(
   target: object,
   type: TriggerOpTypes,

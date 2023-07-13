@@ -81,7 +81,7 @@ export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
  */
 export function reactive<T extends object>(target: T): UnwrapNestedRefs<T>
 export function reactive(target: object) {
-  // if trying to observe a readonly proxy, return the readonly version.
+  // 不需要对 readonly 的对象进行响应式 if trying to observe a readonly proxy, return the readonly version.
   if (isReadonly(target)) {
     return target
   }
@@ -246,18 +246,20 @@ export function shallowReadonly<T extends object>(target: T): Readonly<T> {
 }
 
 function createReactiveObject(
-  target: Target,
-  isReadonly: boolean,
-  baseHandlers: ProxyHandler<any>,
-  collectionHandlers: ProxyHandler<any>,
-  proxyMap: WeakMap<Target, any>
+  target: Target, // 要转换为响应式对象的目标对象
+  isReadonly: boolean,  // 指定响应式对象是否为只读
+  baseHandlers: ProxyHandler<any>, // 代理的基本处理程序
+  collectionHandlers: ProxyHandler<any>, // 代理的集合处理程序
+  proxyMap: WeakMap<Target, any> // 用于存储现有代理的映射
 ) {
+  // 如果目标不是对象，则直接返回
   if (!isObject(target)) {
     if (__DEV__) {
       console.warn(`value cannot be made reactive: ${String(target)}`)
     }
     return target
   }
+  // 已经是一个响应式对象了，也直接返回
   // target is already a Proxy, return it.
   // exception: calling readonly() on a reactive object
   if (
@@ -266,20 +268,24 @@ function createReactiveObject(
   ) {
     return target
   }
+  // proxyMap 中已经存入过 target，直接返回
   // target already has corresponding Proxy
   const existingProxy = proxyMap.get(target)
   if (existingProxy) {
     return existingProxy
   }
+  // 只有特定类型的值才能被 observe
   // only specific value types can be observed.
   const targetType = getTargetType(target)
   if (targetType === TargetType.INVALID) {
     return target
   }
+  // 通过 proxy 来构造一个响应式对象
   const proxy = new Proxy(
     target,
     targetType === TargetType.COLLECTION ? collectionHandlers : baseHandlers
   )
+  // 缓存 target proxy
   proxyMap.set(target, proxy)
   return proxy
 }
